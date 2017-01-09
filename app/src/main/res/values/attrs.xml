@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="SupperBannerView">
+        <attr name="indicatorColor" format="color" />
+        <attr name="selectIndicatorColor" format="color" />
+        <attr name="indicatorSpace" format="dimension" />
+        <attr name="indicatorWidth" format="dimension" />
+        <attr name="indicatorHeight" format="dimension" />
+        <attr name="showDuration" format="integer" />
+        <attr name="pagerChangeDuration" format="integer" />
+        <attr name="onePageCanScroll" format="boolean" />
+        <attr name="isAutoScroll" format="boolean" />
+    </declare-styleable>
+</resources>
