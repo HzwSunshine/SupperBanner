@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.util.AttributeSet;
+import android.util.Property;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 import android.widget.LinearLayout;
@@ -87,6 +88,21 @@ public class IndicatorView extends View {
             mAnimator.setDuration(pageChangeDuration);
         }
         mAnimator.setCurrentPlayTime(currentTime);
+    }
+
+    private static class ColorPaint extends Paint {
+        final static Property<ColorPaint, Integer> PAINT_COLOR =
+                new Property<ColorPaint, Integer>(Integer.class, "PaintColor") {
+                    @Override
+                    public Integer get(ColorPaint object) {
+                        return object.getColor();
+                    }
+
+                    @Override
+                    public void set(ColorPaint object, Integer value) {
+                        object.setColor(value);
+                    }
+                };
     }
 
 }

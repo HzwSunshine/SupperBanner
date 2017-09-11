@@ -5,6 +5,8 @@ import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.v4.util.ArraySet;
 import android.support.v4.view.PagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.util.AttributeSet;
@@ -12,20 +14,15 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.DecelerateInterpolator;
-import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Scroller;
 
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.hzw.supperbanner.R;
 
 import java.lang.reflect.Field;
 import java.util.List;
-
-import static com.bumptech.glide.Glide.with;
 
 /**
  * 超级轮播图
@@ -34,11 +31,10 @@ import static com.bumptech.glide.Glide.with;
 
 public class SupperBannerView extends FrameLayout implements View.OnTouchListener {
 
-    private static final int PAGER_SIZE_INDEX = 8;
+    private static final int PAGER_SIZE_INDEX = 4;
     private static final int MESSAGE_WHAT = 1314;
     private LinearLayout indicatorGroup;
     private BannerHandler bannerHandler;
-    private Runnable bannerRunnable;
     private ViewPager pager;
     private int pagerMaxSize;
     //指示器的间距，宽度和高度，宽度必须大于等于高度
@@ -47,14 +43,17 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
     private int indicatorColor, selectIndicatorColor;
     //广告的展示时间和切换时间
     private int showDuration, pagerChangeDuration;
-    //只有一个广告时是否可以滑动,和是否自动轮播
-    private boolean onePageCanScroll, isAutoScroll;
-    private boolean isHasMessage = true;
+    //是否显示指示器,是否自动轮播
+    private boolean isShowIndicator, isAutoScroll;
     private boolean isFirstMove = true;
     private BannerPagerAdapter adapter;
     private List<String> urls;
-    private int width, height;
-    private boolean isPagerUpdate;
+    private ArraySet<ImageView> destroyViews = new ArraySet<>();
+
+    private boolean isClip;
+    private float clipWidth;
+    private float clipSpace;
+    private float clipPercent;
 
     public SupperBannerView(Context context) {
         super(context);
@@ -80,15 +79,20 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
         indicatorHeight = array.getDimension(R.styleable.SupperBannerView_indicatorHeight, dip2px(7));
         showDuration = array.getInteger(R.styleable.SupperBannerView_showDuration, 3000);
         pagerChangeDuration = array.getInteger(R.styleable.SupperBannerView_pagerChangeDuration, 500);
-        onePageCanScroll = array.getBoolean(R.styleable.SupperBannerView_onePageCanScroll, false);
+        isShowIndicator = array.getBoolean(R.styleable.SupperBannerView_isShowIndicator, true);
         isAutoScroll = array.getBoolean(R.styleable.SupperBannerView_isAutoScroll, true);
+        isClip = array.getBoolean(R.styleable.SupperBannerView_isClipLayout, false);
+        if (isClip) {
+            clipWidth = array.getDimension(R.styleable.SupperBannerView_clipWidth, 0);
+            clipSpace = array.getDimension(R.styleable.SupperBannerView_clipSpace, dip2px(20));
+            clipPercent = array.getFloat(R.styleable.SupperBannerView_clipPercent, 0.7f);
+        }
         array.recycle();
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        pager = new ViewPager(getContext());
-        this.addView(pager, params);
-        FrameLayout.LayoutParams paramsIndicator = new FrameLayout.LayoutParams(
+        pager = new BannerPager(getContext());
+        this.addView(pager);
+        initClipLayout();
+        LayoutParams paramsIndicator = new LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         paramsIndicator.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         paramsIndicator.bottomMargin = (int) dip2px(20);
@@ -96,11 +100,35 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
         this.addView(indicatorGroup, paramsIndicator);
         pager.setOnTouchListener(this);
         setPagerScrollDuration(pager);
+    }
+
+    private void initClipLayout() {
+        if (!isClip) return;
+        setClipChildren(false);
+        pager.setClipChildren(false);
+        setClipWidth((int) clipWidth);
+    }
+
+    public void setClipWidth(final int clipWidth) {
+        if (clipWidth == 0) return;
+        this.clipWidth = clipWidth;
+        LayoutParams params = (LayoutParams) pager.getLayoutParams();
+        params.gravity = Gravity.CENTER;
+        params.width = clipWidth;
+        params.height = LayoutParams.MATCH_PARENT;
+        pager.setLayoutParams(params);
+        float space = clipWidth * (1 - clipPercent) / 2;
+        clipSpace = clipSpace - space;
+        pager.setPageMargin((int) clipSpace);
+        pager.setPageTransformer(true, new ZoomTransformer(clipPercent));
         pager.post(new Runnable() {
             @Override
             public void run() {
-                width = pager.getWidth();
-                height = pager.getHeight();
+                int width = getWidth();
+                float temp = width * 1.0f / clipWidth;
+                int num = width / clipWidth;
+                num = temp > num ? num + 1 : num;
+                pager.setOffscreenPageLimit(num);
             }
         });
     }
@@ -113,12 +141,9 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
     public void start(List<String> urls) {
         if (urls.size() == 0) return;
         this.urls = urls;
-        if (this.urls.size() == 1) {
-            pagerMaxSize = onePageCanScroll ? PAGER_SIZE_INDEX : this.urls.size();
-        } else {
-            pagerMaxSize = this.urls.size() * PAGER_SIZE_INDEX;
-        }
-        if (urls.size() != 1 || onePageCanScroll) {
+        pagerMaxSize = this.urls.size() * PAGER_SIZE_INDEX;
+        //指示器显示，或者图片个数不小于1时，显示指示器
+        if (isShowIndicator && this.urls.size() != 1) {
             indicatorGroup.removeAllViews();
             //循环添加指示器
             for (int i = 0; i < this.urls.size(); i++) {
@@ -128,6 +153,8 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
                         indicatorHeight, indicatorSpace, pagerChangeDuration);
                 indicator.setOffset(i == 0 ? 1 : 0);
             }
+        } else {
+            indicatorGroup.removeAllViews();
         }
         if (adapter == null) {
             adapter = new BannerPagerAdapter();
@@ -137,24 +164,19 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
             adapter.notifyDataSetChanged();
         }
         pager.setCurrentItem(this.urls.size(), false);
-
+        if (loadListener != null) loadListener.currentPage(0);
         if (isAutoScroll && bannerHandler == null) {
             bannerHandler = new BannerHandler();
-            bannerRunnable = new Runnable() {
-                public void run() {
-                    bannerHandler.sendEmptyMessageDelayed(MESSAGE_WHAT, showDuration);
-                }
-            };
-            bannerRunnable.run();
+            resume();
         }
     }
+
 
     /**
      * 轮播暂停
      */
     public void pause() {
         if (bannerHandler != null) {
-            isHasMessage = false;
             bannerHandler.removeMessages(MESSAGE_WHAT);
         }
     }
@@ -163,19 +185,9 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
      * 轮播恢复
      */
     public void resume() {
-        if (bannerHandler != null && !isHasMessage) {
-            isHasMessage = true;
-            bannerHandler.sendEmptyMessageDelayed(MESSAGE_WHAT, showDuration);
-        }
-    }
-
-    /**
-     * 取消轮播
-     */
-    public void cancel() {
         if (bannerHandler != null) {
-            bannerHandler.removeCallbacks(bannerRunnable);
             bannerHandler.removeMessages(MESSAGE_WHAT);
+            bannerHandler.sendEmptyMessageDelayed(MESSAGE_WHAT, showDuration);
         }
     }
 
@@ -184,18 +196,14 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
         if (v == pager) {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_MOVE:
-                    if (isFirstMove && bannerHandler != null) {
+                    if (isFirstMove) {
+                        pause();
                         isFirstMove = false;
-                        isHasMessage = false;
-                        bannerHandler.removeMessages(MESSAGE_WHAT);
                     }
                     break;
                 case MotionEvent.ACTION_UP:
-                    if (bannerHandler != null && !isHasMessage) {
-                        isFirstMove = true;
-                        isHasMessage = true;
-                        bannerHandler.sendEmptyMessageDelayed(MESSAGE_WHAT, showDuration);
-                    }
+                    isFirstMove = true;
+                    resume();
                     break;
             }
         }
@@ -203,6 +211,8 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
     }
 
     private class BannerPagerAdapter extends PagerAdapter implements ViewPager.OnPageChangeListener {
+        private int lastPosition = -1;
+
         @Override
         public int getCount() {
             return pagerMaxSize;
@@ -215,18 +225,29 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
 
         @Override
         public Object instantiateItem(ViewGroup container, int position) {
-            ImageView imageView = new ImageView(getContext());
-            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            loadImage(imageView, urls.get(position % urls.size()));
+            ImageView imageView = getContent(position);
             container.addView(imageView);
-            imageView.setOnClickListener(new OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (clickListener != null) {
-                        clickListener.click(v, pager.getCurrentItem() % urls.size());
+            return imageView;
+        }
+
+        private ImageView getContent(int position) {
+            ImageView imageView;
+            if (destroyViews.size() > 0) {
+                imageView = destroyViews.valueAt(0);
+                destroyViews.remove(imageView);
+            } else {
+                imageView = new ImageView(getContext());
+                imageView.setScaleType(ImageView.ScaleType.FIT_XY);
+                imageView.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (clickListener != null) {
+                            clickListener.click(v, pager.getCurrentItem() % urls.size());
+                        }
                     }
-                }
-            });
+                });
+            }
+            loadImage(imageView, position % urls.size());
             return imageView;
         }
 
@@ -243,19 +264,13 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
             }
         }
 
-        private void loadImage(ImageView view, String url) {
-            if (width == 0 || height == 0) {
-                with(getContext()).load(url).diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .into(view);
-            } else {
-                with(getContext()).load(url).diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .override(width, height)
-                        .into(view);
-            }
+        private void loadImage(ImageView view, int position) {
+            if (loadListener != null) loadListener.loadImage(view, position);
         }
 
         @Override
         public void destroyItem(ViewGroup container, int position, Object object) {
+            destroyViews.add((ImageView) object);
             container.removeView((View) object);
         }
 
@@ -264,7 +279,6 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
             position += 1;
             IndicatorView indicator = (IndicatorView) indicatorGroup.getChildAt(position % urls.size());
             IndicatorView indicatorLast = (IndicatorView) indicatorGroup.getChildAt((position % urls.size()) - 1);
-            isPagerUpdate = true;
             if (indicator != null) {
                 indicator.setOffset(positionOffset);
             }
@@ -280,6 +294,11 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
 
         @Override
         public void onPageSelected(int position) {
+            position = position % urls.size();
+            if (loadListener != null && lastPosition != position) {
+                loadListener.currentPage(position);
+                lastPosition = position;
+            }
         }
 
         @Override
@@ -292,17 +311,52 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
         public void handleMessage(Message msg) {
             super.handleMessage(msg);
             int index = pager.getCurrentItem() + 1;
+            if (index == pagerMaxSize - 1) {
+                index = urls.size() * 2 - 2;
+                pager.setCurrentItem(index, false);
+                index += 1;
+            }
             pager.setCurrentItem(index, true);
-            bannerHandler.post(bannerRunnable);
-            if (!isPagerUpdate) {//如果ViewPager没有更新的话手动更新Indicator
-                for (int i = 0; i < urls.size(); i++) {
-                    IndicatorView indicator = (IndicatorView) indicatorGroup.getChildAt(i);
-                    if (indicator != null) {
-                        indicator.setOffset(0);
-                    }
+            bannerHandler.sendEmptyMessageDelayed(MESSAGE_WHAT, showDuration);
+        }
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility == GONE) pause();
+    }
+
+    @Override
+    protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility == VISIBLE) {
+            resume();
+        } else {
+            pause();
+        }
+    }
+
+    private class BannerPager extends ViewPager {
+        private boolean isFirst = true;
+
+        public BannerPager(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            if (getAdapter() != null && !isFirst) {
+                try {
+                    Field field = android.support.v4.view.ViewPager
+                            .class.getDeclaredField("mFirstLayout");
+                    field.setAccessible(true);
+                    field.set(this, false);
+                } catch (Exception ignored) {
                 }
             }
-            isPagerUpdate = false;
+            if (getWidth() != 0) isFirst = false;
         }
     }
 
@@ -310,7 +364,7 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
         try {
             Field field = android.support.v4.view.ViewPager.class.getDeclaredField("mScroller");
             field.setAccessible(true);
-            SlowScroller mScroller = new SlowScroller(getContext(), new DecelerateInterpolator());
+            SlowScroller mScroller = new SlowScroller(getContext());
             mScroller.setDuration(pagerChangeDuration);
             field.set(pager, mScroller);
         } catch (Exception ignored) {
@@ -320,8 +374,8 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
     private class SlowScroller extends Scroller {
         private int mDuration = 1000;
 
-        SlowScroller(Context context, Interpolator interpolator) {
-            super(context, interpolator);
+        SlowScroller(Context context) {
+            super(context);
         }
 
         @Override
@@ -352,6 +406,18 @@ public class SupperBannerView extends FrameLayout implements View.OnTouchListene
 
     public void setItemClickListener(ItemClickListener listener) {
         clickListener = listener;
+    }
+
+    public interface ImageLoadListener {
+        void loadImage(ImageView imageView, int position);
+
+        void currentPage(int position);
+    }
+
+    private ImageLoadListener loadListener;
+
+    public void setImageLoadListener(ImageLoadListener loadListener) {
+        this.loadListener = loadListener;
     }
 
 
