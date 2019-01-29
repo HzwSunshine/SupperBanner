@@ -21,30 +21,8 @@
         app:indicatorHeight="6dp"
         app:indicatorSpace="0dp"
         app:indicatorWidth="16dp"
-        app:isAutoScroll="true"
-        app:isShowIndicator="true"
-        app:pagerChangeDuration="1000"
+        app:onPageScroll="true"
         app:selectIndicatorColor="@color/colorAccent"
-        app:showDuration="3000">
-
-    </com.hzw.supperbanner.SupperBanner.SupperBannerView>
-
-
-    <com.hzw.supperbanner.SupperBanner.SupperBannerView
-        android:id="@+id/supperBanner2"
-        android:layout_width="match_parent"
-        android:layout_height="180dp"
-        android:layout_marginTop="10dp"
-        android:background="#10000000"
-        app:clipPercent="0.8"
-        app:clipSpace="20dp"
-        app:clipWidth="200dp"
-        app:indicatorColor="@android:color/darker_gray"
-        app:indicatorSpace="0dp"
-        app:isAutoScroll="true"
-        app:isClipLayout="true"
-        app:isShowIndicator="true"
-        app:pagerChangeDuration="1000"
         app:showDuration="3000">
 
     </com.hzw.supperbanner.SupperBanner.SupperBannerView>

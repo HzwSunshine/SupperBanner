@@ -13,6 +13,9 @@ import android.view.View;
 import android.view.animation.LinearInterpolator;
 import android.widget.LinearLayout;
 
+/**
+ * Banner指示器的示例
+ */
 public class IndicatorView extends View {
 
     private int indicatorColor, selectIndicatorColor;
@@ -82,7 +85,7 @@ public class IndicatorView extends View {
 
     private void colorAnim(int currentTime) {
         if (mAnimator == null) {
-            mAnimator = ObjectAnimator.ofInt(paint, ColorPaint.PAINT_COLOR, indicatorColor, selectIndicatorColor);
+            mAnimator = ObjectAnimator.ofInt(paint, paint.PAINT_COLOR, indicatorColor, selectIndicatorColor);
             mAnimator.setEvaluator(new ArgbEvaluator());
             mAnimator.setInterpolator(new LinearInterpolator());
             mAnimator.setDuration(pageChangeDuration);
@@ -90,8 +93,8 @@ public class IndicatorView extends View {
         mAnimator.setCurrentPlayTime(currentTime);
     }
 
-    private static class ColorPaint extends Paint {
-        final static Property<ColorPaint, Integer> PAINT_COLOR =
+    private class ColorPaint extends Paint {
+        final Property<ColorPaint, Integer> PAINT_COLOR =
                 new Property<ColorPaint, Integer>(Integer.class, "PaintColor") {
                     @Override
                     public Integer get(ColorPaint object) {

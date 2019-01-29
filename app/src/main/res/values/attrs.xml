@@ -7,12 +7,6 @@
         <attr name="indicatorWidth" format="dimension" />
         <attr name="indicatorHeight" format="dimension" />
         <attr name="showDuration" format="integer" />
-        <attr name="pagerChangeDuration" format="integer" />
-        <attr name="isAutoScroll" format="boolean" />
-        <attr name="isShowIndicator" format="boolean" />
-        <attr name="isClipLayout" format="boolean" />
-        <attr name="clipSpace" format="dimension" />
-        <attr name="clipWidth" format="dimension" />
-        <attr name="clipPercent" format="float" />
+        <attr name="onPageScroll" format="boolean" />
     </declare-styleable>
 </resources>
